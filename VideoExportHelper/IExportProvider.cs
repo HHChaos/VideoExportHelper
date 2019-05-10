@@ -14,7 +14,7 @@ namespace VideoExportHelper
         /// <summary>
         /// 帧率
         /// </summary>
-        int FrameRate { get; }
+        uint FrameRate { get; }
 
         /// <summary>
         /// 时长

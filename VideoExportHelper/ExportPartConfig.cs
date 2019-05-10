@@ -14,7 +14,7 @@ namespace VideoExportHelper
         /// </summary>
         public TimeSpan Start { get; set; }
         /// <summary>
-        /// 视频层延迟时间
+        /// 背景视频层延迟时间
         /// </summary>
         public TimeSpan Delay { get; set; }
         /// <summary>

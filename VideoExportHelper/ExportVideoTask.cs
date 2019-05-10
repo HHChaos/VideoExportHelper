@@ -18,21 +18,26 @@ namespace VideoExportHelper
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly SynchronizationContext _context;
         private readonly Task _exportTask;
-
-        public ExportVideoTask(IExportProvider provider, StorageFolder destinationFolder, string fileName)
+        public ExportVideoTask(IExportProvider provider, StorageFolder destinationFolder, string fileName) : this(provider, destinationFolder, fileName, 30, VideoEncodingQuality.Wvga)
+        {
+        }
+        public ExportVideoTask(IExportProvider provider, StorageFolder destinationFolder, string fileName, uint exportFrameRate, VideoEncodingQuality encodingQuality)
         {
             ExportProvider = provider;
             DestinationFolder = destinationFolder;
             FileName = fileName;
+            ExportFrameRate = exportFrameRate;
+            ExportVideoEncodingQuality = encodingQuality;
             _context = SynchronizationContext.Current;
             _cancellationTokenSource = new CancellationTokenSource();
-            var obj = new Tuple<StorageFolder, IExportProvider, string>(DestinationFolder, provider, fileName);
-            _exportTask = CreateExportTask(obj, _cancellationTokenSource.Token);
+            _exportTask = CreateExportTask(_cancellationTokenSource.Token);
             _cancellationTokenSource.Token.Register(ClearCacheAsync);
         }
 
         public StorageFolder DestinationFolder { get; }
         public string FileName { get; }
+        public uint ExportFrameRate { get; }
+        public VideoEncodingQuality ExportVideoEncodingQuality { get; }
         public int Progress { get; private set; }
         public IExportProvider ExportProvider { get; }
         public bool Canceled => _cancellationTokenSource.IsCancellationRequested;
@@ -40,19 +45,16 @@ namespace VideoExportHelper
         public event EventHandler<EventArgs> ExportComplated;
         public event EventHandler<EventArgs> ExportFailed;
 
-        private Task CreateExportTask(object obj, CancellationToken cancellationToken)
+        private Task CreateExportTask(CancellationToken cancellationToken)
         {
             return new Task(() =>
             {
-                var para = obj as Tuple<StorageFolder, IExportProvider, string>;
-                var folder = para?.Item1;
-                var provider = para?.Item2;
-                var fileName = para?.Item3;
-                var mediaEncodingProfile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.Wvga);
+                var provider = this.ExportProvider;
+                var mediaEncodingProfile = MediaEncodingProfile.CreateMp4(this.ExportVideoEncodingQuality);
                 if (provider?.ExportPartConfigs == null ||
-                    folder == null ||
+                    this.DestinationFolder == null ||
                     provider.ExportPartConfigs.Count < 1 ||
-                    string.IsNullOrEmpty(fileName) ||
+                    string.IsNullOrEmpty(this.FileName) ||
                     Math.Abs(provider.ExportSize.Width) < 1 ||
                     Math.Abs(provider.ExportSize.Height) < 1 ||
                     mediaEncodingProfile?.Video == null)
@@ -62,21 +64,21 @@ namespace VideoExportHelper
                 }
 
                 var exportSize = provider.ExportSize;
-                mediaEncodingProfile.Video.Width = (uint) exportSize.Width;
-                mediaEncodingProfile.Video.Height = (uint) exportSize.Height;
-                mediaEncodingProfile.Video.FrameRate.Numerator = 30;
+                mediaEncodingProfile.Video.Width = (uint)exportSize.Width;
+                mediaEncodingProfile.Video.Height = (uint)exportSize.Height;
+                mediaEncodingProfile.Video.FrameRate.Numerator = this.ExportFrameRate;
                 var cacheFolder = GetCacheFolder().GetAwaiter().GetResult();
                 var device = CanvasDevice.GetSharedDevice();
                 var mediafileList = new List<StorageFile>();
                 var defaultBackgroud =
-                    new CanvasRenderTarget(device, (float) exportSize.Width, (float) exportSize.Height, 96f);
+                    new CanvasRenderTarget(device, (float)exportSize.Width, (float)exportSize.Height, 96f);
                 using (var session = defaultBackgroud.CreateDrawingSession())
                 {
                     session.Clear(Colors.White);
                 }
 
                 var scale = exportSize.Width / provider.ExportArea.Width;
-                var transform = Matrix3x2.CreateScale((float) scale);
+                var transform = Matrix3x2.CreateScale((float)scale);
                 var offsetPoint =
                     Vector2.Transform(new Point(-provider.ExportArea.X, -provider.ExportArea.Y).ToVector2(), transform);
                 transform.Translation = offsetPoint;
@@ -123,10 +125,10 @@ namespace VideoExportHelper
                     {
                         if (Canceled) return;
 
-                        var progress = (int) (currentPosition / provider.Duration * 100 * 0.5);
+                        var progress = (int)(currentPosition / provider.Duration * 100 * 0.5);
                         UpdateProgress(progress);
 
-                        var frame = new CanvasRenderTarget(device, (float) exportSize.Width, (float) exportSize.Height,
+                        var frame = new CanvasRenderTarget(device, (float)exportSize.Width, (float)exportSize.Height,
                             96f);
                         using (var session = frame.CreateDrawingSession())
                         {
@@ -190,14 +192,14 @@ namespace VideoExportHelper
                 #endregion
 
 
-                var exportFile = folder.CreateFileAsync($"{fileName}.mp4", CreationCollisionOption.ReplaceExisting)
+                var exportFile = this.DestinationFolder.CreateFileAsync($"{this.FileName}.mp4", CreationCollisionOption.ReplaceExisting)
                     .GetAwaiter().GetResult();
                 if (Canceled) return;
                 var saveOperation = mediaComposition.RenderToFileAsync(exportFile, MediaTrimmingPreference.Fast,
                     mediaEncodingProfile);
                 saveOperation.Progress = (info, progress) =>
                 {
-                    UpdateProgress((int) (50 + progress * 0.5));
+                    UpdateProgress((int)(50 + progress * 0.5));
                     if (Canceled) saveOperation.Cancel();
                 };
 
